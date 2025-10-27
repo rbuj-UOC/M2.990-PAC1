@@ -1,0 +1,1030 @@
+---
+title: Activitat 1 - Preprocés de les dades
+author: "Robert Buj"
+date: "31/10/1025"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+toc-title: "Taula de continguts"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, error = FALSE, message = FALSE)
+library(readr)
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(stats)
+library(corrplot)
+library(knitr)
+library(kableExtra)
+library(VIM)
+```
+
+# Estructura de les dades
+
+## Diccionari de dades
+
+En el següent bloc de codi es carrega el fitxer d'Excel que conté el diccionari de dades.
+
+```{r}
+# Carrega el fitxer d'Excel amb el diccionari
+xls_dict <- read_excel("data/Data Dictionary.xlsx")
+# Mostra el nombre d'observacions i de variables del diccionari
+dim(xls_dict)
+# Mostra les primeres cinc observacions
+# head(xls_dict, 5)
+```
+
+En el següent bloc de codi es crea una taula amb les variables `número de l’ODS`, `codi de la variable` i `breu descripció de la variable`.
+
+```{r}
+# Crea la taula amb la informació dels indicadors
+info_vars <- select(xls_dict, `Code`, Field, `Associated SDG GOAL`) %>%
+  # Canvia els noms de les variables
+  rename(
+    `codi de la variable` = `Code`,
+    `breu descripció de la variable` = Field
+  ) %>%
+  # Obté el número de l'ODS a partir de la variable `Associated SDG GOAL` i
+  # desa-ho en una nova variable anomenada `número de l’ODS`
+  mutate(`número de l’ODS` = as.integer(sub(
+    "^Goal (\\d+)\\..*", "\\1",
+    `Associated SDG GOAL`
+  ))) %>%
+  # Ordena les observacions pel número de l'ODS
+  arrange(`número de l’ODS`) %>%
+  # Selecciona les variables d'interès
+  select(
+    `número de l’ODS`, `codi de la variable`,
+    `breu descripció de la variable`
+  )
+# Mostra les primeres cinc observacions
+kable(
+  info_vars,
+  caption = "Taula amb la informació de les variables dels indicadors"
+) %>%
+  kable_styling(
+    "striped",
+    latex_options = c("striped", "scale_down", "repeat_header"),
+    position = "center",
+    full_width = FALSE
+  ) %>%
+  column_spec(1, width = "3em") %>%
+  column_spec(2, width = "12em") %>%
+  column_spec(3, width = "25em")
+```
+
+En el següent bloc de codi es crea una taula amb les variables `número de l’ODS` i `descripció de l’ODS`.
+
+```{r}
+# Crea la taula amb la informació dels ODS
+info_ods <- xls_dict %>%
+  # Selecciona la variable `Associated SDG GOAL`
+  select(`Associated SDG GOAL`) %>%
+  # Elimina les observacions duplicades
+  distinct() %>%
+  # Filtra les observacions amb valors no nuls
+  filter(!is.na(`Associated SDG GOAL`)) %>%
+  # Crea les variables `número de l’ODS` i `descripció de l’ODS`
+  mutate(
+    `número de l’ODS` = as.integer(sub(
+      "^Goal (\\d+)\\..*", "\\1",
+      `Associated SDG GOAL`
+    )),
+    `descripció de l’ODS` = sub(
+      "^Goal \\d+\\.\\s*(.*)$", "\\1",
+      `Associated SDG GOAL`
+    )
+  ) %>%
+  # En la variable `descripció de l’ODS`, assigna el valor "General indicator"
+  # a les observacions amb valor NA en la variable `número de l’ODS`
+  mutate(`descripció de l’ODS` = ifelse(is.na(`número de l’ODS`),
+    "General indicator",
+    `descripció de l’ODS`
+  )) %>%
+  # Selecciona les variables d'interès
+  select(`número de l’ODS`, `descripció de l’ODS`) %>%
+  # Elimina les observacions duplicades
+  distinct() %>%
+  # Ordena les observacions pel número de l'ODS
+  arrange(`número de l’ODS`)
+# Mostra les primeres cinc observacions
+kable(
+  info_ods,
+  caption = "Taula amb la informació dels ODS"
+) %>%
+  kable_styling(
+    "striped",
+    latex_options = c("striped", "scale_down", "repeat_header"),
+    position = "center"
+  ) %>%
+  column_spec(1, width = "3em") %>%
+  column_spec(2, width = "35em")
+```
+
+```{r, echo=FALSE}
+# Elimina l'objecte temporal
+rm(xls_dict)
+```
+
+## Fitxer de dades
+
+En el següent bloc de codi es carrega el fitxer CSV que conté el conjunt de dades principal.
+
+```{r}
+# Carrega el fitxer CSV amb el conjunt de dades
+df_dataset <- read_csv("data/WorldSustainabilityDataset.csv",
+  show_col_types = FALSE,
+)
+# Mostra les dimensions del conjunt de dades
+dim(df_dataset)
+# Mostra les primeres cinc observacions del conjunt de dades
+# head(df_dataset, 5)
+```
+
+En el següent bloc de codi es realitzen diverses transformacions al conjunt de dades carregat anteriorment.
+Primer es reordenen les variables amb l'ordre lògic, on es posen les variables quantitatives discretes juntes al final.
+A continuació es reanomenen cinc variables amb noms més curts i més fàcils de manejar.
+
+```{r}
+df_dataset <- df_dataset %>%
+  # Reordena les variables
+  select(
+    `Country Name`,
+    `Country Code`,
+    Continent,
+    Year,
+    `Income Classification (World Bank Definition)`,
+    `World Regions (UN SDG Definition)`,
+    `Regime Type (RoW Measure Definition)`,
+    everything()
+  ) %>%
+  # Canvia els noms de les variables
+  rename(
+    Country = `Country Name`,
+    CountryCode = `Country Code`,
+    Income = `Income Classification (World Bank Definition)`,
+    Regime = `Regime Type (RoW Measure Definition)`,
+    Region = `World Regions (UN SDG Definition)`
+  )
+```
+
+En els següent bloc de codi es canvia el nom de les variables d'indicadors amb la descripció obtinguda del diccionari.
+Primer es divideix el nom original de la variable per obtenir el codi de la variable i després es fa el canvi de nom utilitzant la taula `info_vars`.
+Finalment, s'ordenen les variables d'indicadors alfabèticament.
+
+```{r}
+# Reanomena les variables d'indicadors amb la seva descripció breu
+colnames(df_dataset)[8:ncol(df_dataset)] <- sapply(
+  strsplit(colnames(df_dataset)[8:ncol(df_dataset)], " - "),
+  function(x) trimws(x[2])
+)
+# Ordena les variables d'indicadors alfabèticament
+df_dataset <- df_dataset %>%
+  select(
+    1:7,
+    sort(colnames(df_dataset)[8:ncol(df_dataset)])
+  )
+```
+
+Després dels canvis anteriors, el nom de les variables és el següent:
+
+```{r}
+# Mostra els noms de les columnes del conjunt de dades
+colnames(df_dataset)
+```
+
+# Tipus de dades i possibles inconsistències
+
+Amb la revisió descriptiva de la matriu de dades, si s'elimina el comentari, fem una analisi estadística descriptiva simple de cada variable per tal de determinar els tipus de dades de cada variable i si cal fer alguna conversió.
+
+```{r}
+# Mostra un resum estadístic de les variables
+# summary(df_dataset)
+```
+
+Les variables qualitatives són Country, CountryCode, Continent, Income, Region i Regime. Les variables Country, CountryCode, Continent i Region són variables qualitatives nominals, mentre que les variables Income i Regime són variables qualitatives ordinals.
+
+Les variables quantitatives són Year i la resta d'indicadors. La variable Year és una variable quantitativa discreta, mentre que la resta de variables d'indicadors són variables quantitatives contínues.
+
+La classificació de variables qualitatives i quantitatives coincideix amb les següents dues consultes:
+
+```{r}
+# Mostra el nom de les variables qualitatives
+colnames(df_dataset)[sapply(df_dataset, is.character)]
+# Mostra el nom de les variables quantitatives
+colnames(df_dataset)[sapply(df_dataset, is.numeric)]
+```
+
+Com es pot veure en la següent consulta, si s'elimina el comentari, s'hauran de fer alguns canvis en els tipus de dades de les variables.
+
+```{r}
+# Mostra els tipus de dades de cada columna
+# sapply(df_dataset, class)
+```
+
+## Variables quantitatives
+
+### Variables quantitatives discretes
+
+L´única variable quantitativa discreta és l'any.
+
+```{r}
+# Hi ha valors nuls en la variable Year?
+any(is.na(df_dataset$Year))
+# Hi ha algun valor no numèric en la variable Year?
+any(!is.numeric(df_dataset$Year))
+# Hi ha algun valor no enter en la variable Year?
+any(df_dataset$Year != floor(df_dataset$Year))
+# Converteix la variable Year a tipus enter
+df_dataset$Year <- as.integer(df_dataset$Year)
+```
+
+### Variables quantitatives contínues
+
+A partir de la vuitena columna fins a l'última, totes les variables són quantitatives contínues.
+
+```{r}
+# Nombre de valors `NA` en les variables d'indicadors
+# sapply(df_dataset[8:ncol(df_dataset)], function(x) any(is.na(x)))
+# Hi ha variables no numèriques en les variables d'indicadors diferents de NA?
+# sapply(df_dataset[8:ncol(df_dataset)], function(x) any(!is.numeric(x) & !is.na(x)))
+# Converteix les variables d'indicadors a tipus numèric
+for (i in 8:ncol(df_dataset)) {
+  # Converteix la variable a tipus numèric si és possible, sinó assigna NA
+  df_dataset[[i]] <- ifelse(
+    is.na(df_dataset[[i]]) | !is.numeric(df_dataset[[i]]),
+    NA,
+    as.numeric(df_dataset[[i]])
+  )
+}
+```
+
+## Variables qualitatives
+
+### Països i codis de països
+
+Les variables `Country` i `CountryCode` són variables qualitatives nominals.
+
+Primer comprovem que no hi ha valors nuls a les variables `Country` i `CountryCode`.
+
+```{r}
+# Hi ha valors NA en la variable Country?
+any(is.na(df_dataset$Country))
+# Hi ha valors NA en la variable CountryCode?
+any(is.na(df_dataset$CountryCode))
+```
+
+Després revisem que els països tinguin només un codi de país associat.
+
+```{r}
+df_dataset %>%
+  group_by(Country) %>%
+  summarise(n_country_codes = n_distinct(CountryCode)) %>%
+  arrange(desc(n_country_codes)) %>%
+  head(5)
+```
+
+A continuació revisem que els codis dels països estiguin associats a només un país.
+
+```{r}
+df_dataset %>%
+  group_by(CountryCode) %>%
+  summarise(n_countries = n_distinct(Country)) %>%
+  arrange(desc(n_countries)) %>%
+  head(5)
+```
+
+Convertim les variables `Country` i `CountryCode` a factors.
+
+```{r}
+# Converteix la variable Country a factors
+df_dataset$Country <- as.factor(df_dataset$Country)
+# Converteix la variable CountryCode a factors
+df_dataset$CountryCode <- as.factor(df_dataset$CountryCode)
+```
+
+Mostra la taula de freqüències de la variable `CountryCode`.
+
+```{r}
+table(df_dataset$CountryCode)
+```
+
+### Continent
+
+Revisió i correcció dels valors de la variable `Continent` amb valors `NA`.
+
+```{r}
+# Valors únics de la variable `Continent`
+unique(df_dataset$Continent)
+# Nombre de valors `NA` en la variable `Continent`
+sum(is.na(df_dataset$Continent))
+# Nom dels països que tenen `NA` en la variable `Continent`
+unique(df_dataset$Country[is.na(df_dataset$Continent)])
+# Nom del continent del país Timor-Leste
+unique(df_dataset$Continent[df_dataset$Country == "Timor-Leste"])
+# Assigna el valor correcte a la variable `Continent` per al país Timor-Leste
+df_dataset$Continent[df_dataset$Country == "Timor-Leste"] <- "Asia"
+# Mostra de nou els valors únics de la variable `Continent`
+unique(df_dataset$Continent)
+```
+
+Revisem que els països tinguin el continent correcte.
+
+```{r}
+# Mostra el nombre de continents que té cada país i ordena'ls de més a menys
+df_dataset %>%
+  group_by(Country) %>%
+  summarise(n_continents = n_distinct(Continent)) %>%
+  arrange(desc(n_continents)) %>%
+  head(5)
+```
+
+Convertim la variable `Continent` a factors.
+
+```{r}
+# Converteix la variable Continent a factors
+df_dataset$Continent <- as.factor(df_dataset$Continent)
+```
+
+Mostra la taula de freqüències de la variable `Continent`.
+
+```{r}
+table(df_dataset$Continent)
+```
+
+### Règim
+
+Revisió i correcció dels valors de la variable `Regime` amb valors `NA`.
+
+```{r}
+# Valors únics de la variable `Regime`
+unique(df_dataset$Regime)
+# Nombre d'observacions amb el valor `NA` en la variable `Regime`
+sum(is.na(df_dataset$Regime))
+# Llista dels països amb valor `NA` en la variable `Regime`
+country_list <- unique(df_dataset$Country[is.na(df_dataset$Regime)])
+country_list
+# Mostra els anys i els règims dels països anteriors quan el regim no és `NA`
+df_dataset %>%
+  filter(Country %in% country_list & !is.na(Regime)) %>%
+  select(Country, Year, Regime) %>%
+  arrange(Country, Year) %>%
+  distinct()
+# Mostra l'any quan el regim és `NA` per al país Timor-Leste
+df_dataset %>%
+  filter(Country == "Timor-Leste" & is.na(Regime)) %>%
+  select(Country, Year, Regime) %>%
+  arrange(Year) %>%
+  distinct()
+# Corregeix els valors de la variable `Regime` per al país Timor-Leste
+df_dataset$Regime[df_dataset$Country == "Timor-Leste"] <- "Electoral Democracy"
+# Elimina l'objecte temporal
+rm(country_list)
+# Mostra de nou els països amb valor `NA` en la variable `Regime`
+unique(df_dataset$Country[is.na(df_dataset$Regime)])
+```
+
+Convertim la variable `Regime` a factors ordenats.
+
+```{r}
+# Defineix els nivells ordinals de la variable Regime
+regime_levels <- c(
+  "Closed Autocracy",
+  "Electoral Autocracy",
+  "Electoral Democracy",
+  "Liberal Democracy"
+)
+# Converteix la variable Regime a ordered factors
+df_dataset$Regime <- factor(
+  df_dataset$Regime,
+  levels = regime_levels,
+  ordered = TRUE
+)
+# Mostra els nivells de la variable Regime
+levels(df_dataset$Regime)
+# Mostra la classe de la variable Regime
+class(df_dataset$Regime)
+```
+
+### Regió
+
+Revisió i correcció dels valors de la variable `Region` amb valors `NA`.
+
+```{r}
+# Mostra els valors únics de la variable Region
+unique(df_dataset$Region)
+# Nombre d'observacions amb el valor `NA` en la variable `Region`
+sum(is.na(df_dataset$Region))
+# Mostra el nom dels països que tenen el valor de la variable Region amb NA
+unique(df_dataset$Country[is.na(df_dataset$Region)])
+# Mostra el nom de la Region del país Timor-Leste
+region <- unique(df_dataset$Region[
+  df_dataset$Country == "Timor-Leste" & !is.na(df_dataset$Region)
+])
+region
+# Assigna el valor correcte a la variable Region per al país Timor-Leste
+df_dataset$Region[df_dataset$Country == "Timor-Leste"] <- "South-East Asia"
+# Elimina l'objecte temporal
+rm(region)
+# Mostra de nou els valors únics de la variable Region
+unique(df_dataset$Region)
+```
+
+Revisió que els països tinguin la regió correcta.
+
+```{r}
+# Mostra el nombre de regions que té cada país i ordena'ls de més a menys
+df_dataset %>%
+  # Agrupa les observacions per país
+  group_by(Country) %>%
+  # Calcula el nombre de regions diferents associades a cada país
+  summarise(n_regions = n_distinct(Region)) %>%
+  # Ordena els països pel nombre de regions associades
+  arrange(desc(n_regions)) %>%
+  # Mostra els cinc països amb més regions associades
+  head(5)
+```
+
+Convertim la variable `Region` a factors.
+
+```{r}
+# Converteix la variable Region a factors
+df_dataset$Region <- as.factor(df_dataset$Region)
+```
+
+Mostra la taula de freqüències de la variable `Region`.
+
+```{r}
+table(df_dataset$Region)
+```
+
+### Income
+
+Revisió i correcció dels valors de la variable Income amb valors NA.
+
+```{r}
+# Valors únics de la variable `Income`
+unique(df_dataset$Income)
+# Nombre d'observacions amb el valor `NA` en la variable `Income`
+sum(is.na(df_dataset$Income))
+# Nom dels països que tenen el valor `NA` a la variable `Income`
+unique(df_dataset$Country[is.na(df_dataset$Income)])
+# Mostra l'any i el valor de la variable `Income` per al país Timor-Leste
+df_dataset %>%
+  filter(Country == "Timor-Leste") %>%
+  select(Year, Income) %>%
+  arrange(Year) %>%
+  distinct()
+# Assigna el valor correcte a la variable `Income` per al país Timor-Leste
+df_dataset$Income[
+  df_dataset$Country == "Timor-Leste" & is.na(df_dataset$Income)
+] <- "Low income"
+# Mostra de nou els valors únics de la variable `Income`
+unique(df_dataset$Income)
+```
+
+Converteix la variable `Income` a factors ordenats.
+
+```{r}
+# Defineix els nivells ordinals de la variable Income
+income_levels <- c(
+  "Low income",
+  "Lower-middle income",
+  "Upper-middle income",
+  "High income"
+)
+# Converteix la variable Income a ordered factors
+df_dataset$Income <- factor(
+  df_dataset$Income,
+  levels = income_levels,
+  ordered = TRUE
+)
+# Mostra els nivells de la variable Income
+levels(df_dataset$Income)
+# Mostra la classe de la variable Income
+class(df_dataset$Income)
+```
+
+## Valors extrems
+
+```{r, echo=FALSE}
+# Canvia el nom de la variable per facilitar la seva manipulació
+df_dataset <- df_dataset %>%
+  rename(
+    GINI = `SI.POV.GINI`,
+    GHE = `GH.EM.IC.LUF`
+  )
+```
+
+### Desigualtat (GINI)
+
+Per a detectar si hi ha valors atípics el la variable `GINI` utilitzem el diagrama de caixa.
+En la següent gràfica es mostra el diagrama de caixa de la variable `GINI` per a cada any.
+Segons sembla, que sembla hi ha països amb valors atípics en aquesta variable, als anys 2007, 2008, 2010, 2014 i 2015.
+
+```{r, fig.align ='center'}
+# Boxplot de la variable `GINI` per a cada any
+ggplot(
+  df_dataset,
+  aes(
+    x = as.factor(Year),
+    y = GINI
+  )
+) +
+  geom_boxplot() +
+  labs(
+    title = "GINI per any",
+    x = "Any",
+    y = "GINI",
+  ) +
+  theme_minimal() +
+  # Centra el títol
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Els valors atípics de la variable `GINI` són els següents:
+
+```{r}
+# Funció per identificar valors atípics
+is_outlier <- function(x) {
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr <- q3 - q1
+  lower_bound <- q1 - 1.5 * iqr
+  upper_bound <- q3 + 1.5 * iqr
+  return(x < lower_bound | x > upper_bound)
+}
+# Mostra els valors atípics per als anys 2007, 2008, 2010, 2014 i 2015
+outlier_years <- c(2007, 2008, 2010, 2014, 2015)
+df_outliers <- df_dataset %>%
+  filter(Year %in% outlier_years) %>%
+  group_by(Year) %>%
+  filter(is_outlier(GINI)) %>%
+  select(Year, Country, GINI) %>%
+  arrange(Year, Country)
+df_outliers
+```
+
+Mirarem quina és la distribució de la variable `GINI` per als països amb valors atípics.
+
+```{r, fig.align ='center'}
+# Boxplot de la variable `GINI` per als països amb valors atípics
+ggplot(
+  df_dataset %>%
+    filter(Country %in% df_outliers$Country),
+  aes(
+    x = Country,
+    y = GINI
+  )
+) +
+  geom_boxplot() +
+  labs(
+    title = "GINI per països amb valors atípics",
+    x = "País",
+    y = "GINI",
+  ) +
+  theme_minimal() +
+  # Centra el títol
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Els valors atípics semblen ser deguts a països amb una alta desigualtat, ja que exceptuant als dos últims països, els valors atípics estan dins dels seus respectius rangs interquartílics.
+
+En el cas de Sud-àfrica, hi ha poca variabilitat en els valors del GINI, però això no justifica que sigui un valor atípic, ja que en tots els anys el GINI s'ha mantingut alt.
+
+```{r, fig.align ='center'}
+# Gràfica de línies del GINI per a Sud-àfrica
+ggplot(
+  df_dataset %>%
+    filter(Country == "South Africa"),
+  aes(x = Year, y = GINI)
+) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "GINI de Sud-àfrica al llarg dels anys",
+    x = "Any",
+    y = "GINI",
+  ) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, NA)) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+En el cas de Zambia, hi ha un valor baix al començament però després sembla que hi ha un lleuger augment sobtat en els valors del GINI, que es manté lleugerament estable amb una tendència poc pronunciada a l'alça.
+
+```{r, fig.align ='center'}
+# Gràfica de línies del GINI per a Zambia
+ggplot(
+  df_dataset %>%
+    filter(Country == "Zambia"),
+  aes(x = Year, y = GINI)
+) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "GINI de Zambia al llarg dels anys",
+    x = "Any",
+    y = "GINI",
+  ) +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, NA)) +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r, echo=FALSE}
+# Eliminem els objectes temporals.
+rm(df_outliers, outlier_years, outlier_year)
+```
+
+### Emissions de gasos d’efecte hivernacle (GHE)
+
+Per a detectar si hi ha valors atípics el la variable GHE utilitzem el diagrama de caixa.
+En la següent gràfica es mostra el diagrama de caixa de la variable `GHE` per a cada any.
+
+```{r, fig.align ='center'}
+# Boxplot de la variable `GHE` per a cada any
+ggplot(
+  df_dataset,
+  aes(
+    x = as.factor(Year),
+    y = GHE
+  )
+) +
+  geom_boxplot() +
+  labs(
+    title = "GHE per any",
+    x = "Any",
+    y = "GHE",
+  ) +
+  theme_minimal() +
+  # Centra el títol
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Els valors atípics de la variable `GHE` es deuen als dos països més contaminants. Els països amb més emissions de gasos d'efecte hivernacle són Xina i Estats Units.
+```{r}
+# El dos país que tenen el valor més alt de GHE cada any
+df_dataset %>%
+  group_by(Year) %>%
+  filter(GHE %in% sort(unique(GHE), decreasing = TRUE)[1:2]) %>%
+  arrange(Year, Country) %>%
+  select(Year, Country, GHE) %>%
+  head(10)
+```
+
+Sent Xina el país amb més emissions en els últims anys.
+
+```{r}
+# El país que té el valor màxim de GHE cada any
+df_dataset %>%
+  group_by(Year) %>%
+  filter(GHE == max(GHE, na.rm = TRUE)) %>%
+  arrange(Year, Country) %>%
+  select(Year, Country, GHE) %>%
+  head(10)
+```
+
+```{r, echo=FALSE}
+# Desfés el canvi de nom de la variable per facilitar la seva manipulació
+df_dataset <- df_dataset %>%
+  rename(
+    `SI.POV.GINI` = GINI,
+    `GH.EM.IC.LUF` = GHE
+  )
+```
+
+# Correlacions
+
+```{r,echo=FALSE}
+# Mitjançant el diccionari info_vars, es poden obtenir els codis de les
+# variables a partir de la seva descripció breu i viceversa.
+get_variable_code <- function(description) {
+  code <- info_vars$`codi de la variable`[
+    info_vars$`breu descripció de la variable` == description
+  ]
+  return(code)
+}
+get_variable_description <- function(code) {
+  description <- info_vars$`breu descripció de la variable`[
+    info_vars$`codi de la variable` == code
+  ]
+  return(description)
+}
+for (i in 8:ncol(df_dataset)) {
+  colname <- colnames(df_dataset)[i]
+  code <- get_variable_description(colname)
+  if (length(code) > 0) {
+    colnames(df_dataset)[i] <- code
+  }
+}
+```
+
+## Matriu de correlacions en indicadors de pobresa
+
+```{r}
+# vector amb els codis dels indicadors de pobresa
+poverty_indicators <- info_vars$`breu descripció de la variable`[
+  info_vars$`número de l’ODS` %in% c(1, 2, 3)
+]
+poverty_indicators <- c(
+  poverty_indicators,
+  info_vars$`breu descripció de la variable`[
+    info_vars$`codi de la variable` == "SE.PRM.UNER.ZS"
+  ]
+)
+poverty_indicators <- c(
+  poverty_indicators,
+  info_vars %>%
+    filter(`número de l’ODS` == 10) %>%
+    pull(`breu descripció de la variable`)
+)
+poverty_indicators <- c(
+  poverty_indicators,
+  "GDP (Current US$)"
+)
+# Filtra els indicadors que estan presents en el conjunt de dades
+poverty_indicators <- poverty_indicators[
+  poverty_indicators %in% colnames(df_dataset)
+]
+# Matriu de correlacions en indicadors de pobresa
+cor_matrix_poverty <- cor(
+  df_dataset %>%
+    select(all_of(poverty_indicators)),
+  use = "pairwise.complete.obs"
+)
+# Arrodonim els valors de la matriu de correlacions a 2 decimals
+# round(cor_matrix_poverty, 2)
+# Gràfica de la matriu de correlacions dels indicadors de pobresa
+corrplot(cor_matrix_poverty,
+  type = "upper", order = "hclust",
+  tl.col = "black",
+  tl.srt = 60,
+  method = "circle",
+  tl.len = 0.8,
+  cex.main = 1.5,
+  tl.cex = 0.6,
+)
+```
+
+La correlació més alta és la que hi ha entre la variable `Proportion of population below international poverty line (%)` i la variable `Proportion of population using basic drinking water services, by location (%)`, amb un valor de -0,80.
+Després hi ha una correlació de -0,77 entre la variable `Life expectancy at birth, total (years)` i la variable `Proportion of population below international poverty line`.
+On es pot veure que la proporcio de població per sota del llindar de pobresa està més o menys linealment relacionades en sentit invers amb la proporcio de població que té accés a serveis bàsics d'aigua potable i amb l'esperança de vida al naixement, per la qual cosa podem augmentar el valor de la primera variable disminueix les altres dues i a la inversa.
+
+Després hi ha una correlació positiva de 0,77 entre la variable `Proportion of population using basic drinking water services, by location (%) `i la variable `Life expectancy at birth, total (years)`, fet que indica que gairebé hi ha una dependència lineal en sentit directe (menor al 0,85), és a dir, gairebé una variable és redundant respecte a l'altra, si la correlació fos superior o igual al 0,80 es podria eliminar.
+
+Amb valors de correlació propers a 1 o 1, és a dir correlacions inferiors o iguals a -0,85 o superiors o iguals a 0,85, no hi hauria dubte que hi hauria una relació lineal directa o inversa entre les variables, respectivament.
+En la relació directa, les variables es poden eliminar. El fet d'eliminar una variable millora la interpretabilitat i es redueix la mida del conjunt de dades.
+Mentre que en la relació inversa en augmentar una variable decrementa l'altra variable, i a la inversa.
+
+```{r, echo=FALSE}
+# Elimina els objectes temporals
+rm(poverty_indicators, cor_matrix_poverty)
+```
+
+## Correlacions amb esperança de vida
+
+En la següent taula es mostren les correlacions de les variables d'indicadors de pobresa amb la variable `Life expectancy at birth, total (years)` ordenades de manera decreixent.
+
+```{r}
+# Vector amb els noms de tots els indicadors
+all_indicators <- colnames(df_dataset)[8:ncol(df_dataset)]
+# Matriu de correlacions de tots els indicadors
+cor_matrix_all <- cor(
+  df_dataset %>%
+    select(all_of(all_indicators)),
+  use = "pairwise.complete.obs"
+)
+# Correlacions amb la variable `Life expectancy at birth, total (years)`
+cor_life_expectancy <- cor_matrix_all[
+  "Life expectancy at birth, total (years)",
+]
+# Elimina la correlació de la variable amb ella mateixa
+cor_life_expectancy <- cor_life_expectancy[
+  names(cor_life_expectancy) != "Life expectancy at birth, total (years)"
+]
+# Ordena les correlacions de manera decreixent
+cor_life_expectancy <- sort(cor_life_expectancy, decreasing = TRUE)
+# Agafa només els 5 primers valors i els 5 últims valors
+cor_life_expectancy <- c(
+  head(cor_life_expectancy, 5),
+  tail(cor_life_expectancy, 5)
+)
+# Mostra la taula amb les correlacions
+kable(cor_life_expectancy,
+  col.names = c("Indicator", "Correlation"),
+  # arrodonim els valors de correlació a 2 decimals
+  digits = 2,
+  caption = "Correlacions amb la variable esperança de vida"
+) %>%
+  kable_styling(
+    "striped",
+    latex_options = c("striped", "scale_down", "repeat_header"),
+    position = "center",
+    full_width = FALSE
+  ) %>%
+  pack_rows("Dependència lineal en sentit directe", 1, 5) %>%
+  pack_rows("Linealment relacionades en sentit directe", 6, 10, latex_gap_space = "2em")
+```
+
+Les primeres cinc variables de la taula anterior són les variables que tenen una correlació positiva més alta amb l'esperança de vida, mentre que les últimes cinc variables són les que tenen una correlació negativa més baixa amb l'esperança de vida.
+Es podria eliminar la variable `Access to electricity (% of population)`, correlació positiva més alta, ja que té la correlació és igual al llindar de 0,85.
+Quan els valors de la correlacions són superiors o iguals a 0,85 o inferiors o iguals a -0,85, es podria considerar que hi ha una relació lineal directa o inversa, respectivament.
+
+```{r, echo=FALSE}
+# Elimina els objectes temporals
+rm(all_indicators, all_indicators, cor_matrix_all)
+```
+
+# Imputació
+
+En la taula següent es mostra el nombre de valors NA en la variable `Life expectancy at birth, total (years)` per any.
+
+```{r}
+kable(
+  table(df_dataset$Year[
+    is.na(df_dataset$`Life expectancy at birth, total (years)`)
+  ]),
+  col.names = c("Any", "Nombre de valors NA"),
+  caption = "Nombre de valors NA en la variable esperança de vida per any"
+) %>%
+  kable_styling(
+    "striped",
+    latex_options = c("striped", "scale_down", "repeat_header"),
+    position = "center",
+    full_width = FALSE
+  )
+```
+
+```{r}
+# Variables més correlacionades amb l'esperança de vida
+cor_vars <- names(cor_life_expectancy[1:5])
+# Imputació de valors NA en la variable de l'esperança de vida per a anys
+# diferents de 2000 es fa la mitjana de les cinc variables més correlacionades
+df_dataset$`Life expectancy at birth, total (years)` <-
+  ifelse(
+    is.na(df_dataset$`Life expectancy at birth, total (years)`) &
+      df_dataset$Year != 2000,
+    rowMeans(
+      df_dataset %>%
+        select(all_of(cor_vars)),
+      na.rm = TRUE
+    ),
+    df_dataset$`Life expectancy at birth, total (years)`
+  )
+# Imputació de valors NA en la variable de l'esperança de vida per a l'any 2000
+# es fa servir el mètode kNN amb k = 5
+df_dataset$`Life expectancy at birth, total (years)` <-
+  ifelse(
+    is.na(df_dataset$`Life expectancy at birth, total (years)`) &
+      df_dataset$Year == 2000,
+    kNN(
+      df_dataset %>%
+        select(
+          `Life expectancy at birth, total (years)`,
+          all_of(names(cor_life_expectancy[1:5]))
+        ),
+      variable = "Life expectancy at birth, total (years)",
+      k = 5,
+      imp_var = FALSE
+    )$`Life expectancy at birth, total (years)`,
+    df_dataset$`Life expectancy at birth, total (years)`
+  )
+```
+
+```{r, echo=FALSE}
+# Elimina els objectes temporals
+rm(cor_life_expectancy, cor_vars)
+```
+
+# Taula resum
+
+```{r}
+# Calcula les mesures de tendència central
+central_tendency <- df_dataset %>%
+  # Filtra les observacions de l'últim any disponible
+  filter(Year == max(Year)) %>%
+  # Agrupa les observacions per regió
+  group_by(Region) %>%
+  # Calcula la mitjana (M) i la mediana (Md) de les variables quantitatives
+  summarise(
+    Mitjana_Pobresa =
+      mean(`Proportion of population below international poverty line (%)`,
+        na.rm = TRUE
+      ),
+    Mediana_Pobresa =
+      median(`Proportion of population below international poverty line (%)`,
+        na.rm = TRUE
+      ),
+    Mitjana_GINI =
+      mean(`Gini index (World Bank estimate)`,
+        na.rm = TRUE
+      ),
+    Mediana_GINI =
+      median(`Gini index (World Bank estimate)`,
+        na.rm = TRUE
+      ),
+    Mitjana_Esperança_Vida =
+      mean(`Life expectancy at birth, total (years)`,
+        na.rm = TRUE
+      ),
+    Mediana_Esperança_Vida =
+      median(`Life expectancy at birth, total (years)`,
+        na.rm = TRUE
+      )
+  )
+# Mostra la taula amb les mesures de tendència central
+kable(
+  central_tendency,
+  digits = 2,
+  caption = "Mesures de tendència central per regió en l'últim any disponible",
+  col.names = c(
+    "Regió",
+    "M",
+    "Md",
+    "M",
+    "Md",
+    "M",
+    "Md"
+  )
+) %>%
+  add_header_above(
+    c(" " = 1, "Pobresa" = 2, "GINI" = 2, "Esperança de Vida" = 2)
+  ) %>%
+  kable_styling(
+    "striped",
+    latex_options = c("striped", "scale_down", "repeat_header"),
+    position = "center",
+    full_width = FALSE
+  )
+```
+```{r}
+# Calcula les mesures de dispersió
+dispersion_measures <- df_dataset %>%
+  # Filtra les observacions de l'últim any disponible
+  filter(Year == max(Year)) %>%
+  # Agrupa les observacions per regió
+  group_by(Region) %>%
+  # Calcula la desviació estàndard (S) i la desviació absoluta respecte de la
+  # mediana (MAD)
+  summarise(
+    Desviació_Estàndard_Pobresa =
+      sd(`Proportion of population below international poverty line (%)`,
+        na.rm = TRUE
+      ),
+    Desviació_Absoluta_Pobresa =
+      mad(`Proportion of population below international poverty line (%)`,
+        na.rm = TRUE
+      ),
+    Desviació_Estàndard_GINI = sd(`Gini index (World Bank estimate)`,
+      na.rm = TRUE
+    ),
+    Desviació_Absoluta_GINI = mad(`Gini index (World Bank estimate)`,
+      na.rm = TRUE
+    ),
+    Desviació_Estàndard_Esperança_Vida =
+      sd(`Life expectancy at birth, total (years)`,
+        na.rm = TRUE
+      ),
+    Desviació_Absoluta_Esperança_Vida =
+      mad(`Life expectancy at birth, total (years)`,
+        na.rm = TRUE
+      )
+  )
+# Mostra la taula amb les mesures de dispersió
+kable(
+  dispersion_measures,
+  digits = 2,
+  decimal.mark = ",",
+  caption = "Mesures de dispersió per regió en l'últim any disponible",
+  col.names = c(
+    "Regió",
+    "S",
+    "DAM",
+    "S",
+    "DAM",
+    "S",
+    "DAM"
+  )
+) %>%
+  add_header_above(
+    c(" " = 1, "Pobresa" = 2, "GINI" = 2, "Esperança de Vida" = 2)
+  ) %>%
+  kable_styling(
+    "striped",
+    latex_options = c("striped", "scale_down", "repeat_header"),
+    position = "center",
+    full_width = FALSE
+  )
+```

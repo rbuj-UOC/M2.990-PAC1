@@ -1,0 +1,25 @@
+{
+  "cSpell.language": "ca,en",
+  "cSpell.words": [
+    "colnames",
+    "dplyr",
+    "httpgd",
+    "knitr",
+    "lapply",
+    "Leste",
+    "ncol",
+    "pandoc",
+    "Preprocés",
+    "readr",
+    "readxl",
+    "rmarkdown",
+    "sapply",
+    "strsplit",
+    "summarise",
+    "trimws"
+  ],
+  "editor.formatOnSave": true,
+  "editor.rulers": [
+    80
+  ]
+}
