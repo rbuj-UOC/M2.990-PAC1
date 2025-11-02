@@ -18,8 +18,17 @@
     "summarise",
     "trimws"
   ],
-  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.markdownlint": "always"
+  },
   "editor.rulers": [
     80
-  ]
+  ],
+  "editor.formatOnSave": true,
+  "github.copilot.enable": {
+    "*": false,
+  },
+  "[markdown]": {
+    "editor.formatOnPaste": true
+  }
 }

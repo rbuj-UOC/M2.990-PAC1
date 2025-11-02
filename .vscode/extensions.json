@@ -4,6 +4,7 @@
   // List of extensions which should be recommended for users of this workspace.
   "recommendations": [
     "EditorConfig.EditorConfig",
+    "DavidAnson.vscode-markdownlint",
     "mechatroner.rainbow-csv",
     "ms-python.black-formatter",
     "REditorSupport.r",
